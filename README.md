@@ -60,6 +60,93 @@ mvn spring-boot:run
    - `full`：执行完整 `mvn clean test`
 5. 最终输出验证摘要和制品，作为 CircleCI artifact 保存。
 
+### Chunk CLI 与 sidecar
+
+除了推送后的 CI 流程，这个项目也适合接入 `Chunk CLI` 做提交前验证。
+
+三者的职责可以这样理解：
+
+- `.circleci/config.yml`：负责代码推送后的标准 CI/CD。
+- `Chunk Tasks`：负责 CircleCI 平台侧的 AI 分析与自动修复，例如 flaky test 修复。
+- `Chunk CLI / sidecar`：负责开发者在本地提交前先运行校验，或把这些校验迁移到 CircleCI 远端 sidecar 环境执行。
+
+对于当前这个 Spring Boot Maven 项目，建议先把提交前验证保持为最小闭环：
+
+```bash
+chunk init
+chunk validate
+```
+
+建议 `chunk validate` 执行的核心校验命令为：
+
+```bash
+mvn -B -ntp test
+```
+
+如果后续你增加了更严格的质量门禁，可以扩展为：
+
+```bash
+mvn -B -ntp test
+mvn -B -ntp package -DskipTests
+```
+
+为了让 `my_project` 更适合提交前校验，仓库里已经预置了以下文件：
+
+- `.claude/settings.json`
+- `scripts/chunk-pre-commit-gate.sh`
+- `scripts/chunk-validate-tests.sh`
+- `scripts/chunk-validate-package.sh`
+- `scripts/chunk-validate-circleci.sh`
+
+这些文件的职责是：
+
+- 在 AI 编码代理尝试执行 `git commit` 前自动触发校验
+- 通过 `chunk validate ... --override-cmd` 运行项目级验证命令
+- 验证 Maven 测试、可打包性，以及 CircleCI 配置文件合法性
+
+推荐的本地启用步骤如下：
+
+```bash
+brew install CircleCI-Public/circleci/chunk
+brew install circleci
+chunk hook env update --profile tests-lint
+chunk init
+```
+
+由于 `chunk init` 会生成自己的 `.chunk/config.json` 和 `.claude/settings.json`，执行后建议保留本仓库中的提交门禁逻辑，或将生成内容合并到当前的 `.claude/settings.json` 中。
+
+手动执行时，推荐使用下面这组命令：
+
+```bash
+chunk validate tests --no-check --override-cmd "bash scripts/chunk-validate-tests.sh"
+chunk validate package --no-check --override-cmd "bash scripts/chunk-validate-package.sh"
+chunk validate circleci-config --no-check --override-cmd "bash scripts/chunk-validate-circleci.sh"
+```
+
+如果想在一次命令里跑完整提交流程，可以直接执行：
+
+```bash
+bash scripts/chunk-pre-commit-gate.sh
+```
+
+这样做的好处是：
+
+- 在代码提交前尽早发现问题
+- 尽量减少“本地能过、CI 失败”的情况
+- 如果升级到支持 remote sidecar 的付费方案，可以把这些校验迁移到远端统一环境中执行
+
+需要注意：
+
+- 根据 CircleCI 官方 Chunk CLI 说明，Chunk CLI 目前支持 `macOS` 和 `Linux`，`Windows` 暂不支持。
+- 这个仓库已经把校验逻辑写成 Bash 脚本，因此最适合在 macOS、Linux 或 WSL 环境中使用。
+
+### 当前项目推荐的落地顺序
+
+1. 保持现有 `.circleci/config.yml` 作为推送后验证主流程。
+2. 在 CircleCI 控制台启用 `Chunk Tasks`，先从 `Fix flaky tests` 开始。
+3. 在开发机安装 `Chunk CLI`，先使用 `chunk validate` 做本地提交前校验。
+4. 团队需要更强一致性时，再将本地校验升级到 remote sidecar。
+
 ### CI 阶段
 
 `automated_verification` 作业完成以下事情：
