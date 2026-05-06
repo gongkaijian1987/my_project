@@ -1,0 +1,52 @@
+version: 2.1
+
+jobs:
+  build_and_test:
+    docker:
+      - image: maven:3.8.8-eclipse-temurin-8
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-v1-{{ checksum "pom.xml" }}
+            - maven-v1-
+      - run:
+          name: Run unit tests
+          command: mvn -B -ntp clean test
+      - run:
+          name: Package application
+          command: mvn -B -ntp package -DskipTests
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: maven-v1-{{ checksum "pom.xml" }}
+      - store_test_results:
+          path: target/surefire-reports
+      - store_artifacts:
+          path: target/springboot-circleci-demo-0.0.1-SNAPSHOT.jar
+
+  deploy_snapshot:
+    docker:
+      - image: cimg/base:stable
+    working_directory: ~/project
+    steps:
+      - checkout
+      - run:
+          name: Simulate deployment
+          command: |
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
+
+workflows:
+  ci_cd:
+    jobs:
+      - build_and_test
+      - deploy_snapshot:
+          requires:
+            - build_and_test
+          filters:
+            branches:
+              only:
+                - main
+
