@@ -1,0 +1,31 @@
+version: 2.1
+
+workflows:
+  cci-agent-setup-workflow:
+    jobs:
+      - cci-agent-setup
+
+jobs:
+  cci-agent-setup:
+    docker:
+      - image: maven:3.8.8-eclipse-temurin-8
+    resource_class: medium
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-v1-{{ checksum "pom.xml" }}
+            - maven-v1-
+      - run:
+          name: Verify Java and Maven versions
+          command: |
+            java -version
+            mvn -version
+      - run:
+          name: Prepare Maven dependencies
+          command: mvn -B -ntp dependency:go-offline
+      - save_cache:
+          key: maven-v1-{{ checksum "pom.xml" }}
+          paths:
+            - ~/.m2
+
