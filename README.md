@@ -43,16 +43,35 @@ mvn spring-boot:run
 
 ## CircleCI 流程说明
 
+### 自动化验证如何落地
+
+这个项目现在不是“每次都只跑一套固定脚本”，而是先做变更分析，再决定验证深度：
+
+1. `scripts/verification-plan.sh` 读取本次提交与 `main` 的差异。
+2. 根据变更位置做风险评分，例如：
+   - `pom.xml`、`.circleci/`、`scripts/` 变更属于高风险。
+   - `controller` 变更属于中高风险。
+   - `service` 变更属于中风险。
+   - 仅文档变更属于低风险。
+3. 输出验证计划到 `target/verification/verification-plan.env`。
+4. `scripts/run-automated-verification.sh` 根据风险决定执行：
+   - `lightweight`：只做 `mvn validate`
+   - `targeted`：执行测试验证并记录定向目标
+   - `full`：执行完整 `mvn clean test`
+5. 最终输出验证摘要和制品，作为 CircleCI artifact 保存。
+
 ### CI 阶段
 
-`build_and_test` 作业完成以下事情：
+`automated_verification` 作业完成以下事情：
 
 1. 拉取代码。
-2. 恢复 Maven 缓存。
-3. 执行 `mvn clean test`。
-4. 执行 `mvn package -DskipTests` 打包。
-5. 保存 `~/.m2` 缓存。
-6. 上传测试报告和 Jar 制品。
+2. 安装 `git` 以便分析差异。
+3. 执行变更分析和风险分级。
+4. 恢复 Maven 缓存。
+5. 按风险级别执行自动化验证。
+6. 按需执行打包。
+7. 保存 `~/.m2` 缓存。
+8. 上传测试结果、验证报告和 Jar 制品。
 
 ### CD 阶段
 
@@ -83,3 +102,5 @@ mvn spring-boot:run
 - 增加 `Checkstyle` / `SpotBugs` 做质量门禁
 - 增加多环境部署工作流
 - 如果生产要容器化，可补充 `Dockerfile` 和镜像发布任务
+- 将 `verification-plan.sh` 的规则接入真实构建历史、失败率和 flaky test 数据
+- 将高风险变更自动关联审批、回滚策略和发布窗口

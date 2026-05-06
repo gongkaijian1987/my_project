@@ -1,28 +1,39 @@
 version: 2.1
 
 jobs:
-  build_and_test:
+  automated_verification:
     docker:
       - image: maven:3.8.8-eclipse-temurin-8
     working_directory: ~/project
     steps:
       - checkout
+      - run:
+          name: Install git
+          command: |
+            apt-get update
+            apt-get install -y git
+      - run:
+          name: Analyze changed files and build verification plan
+          command: |
+            chmod +x scripts/verification-plan.sh
+            ./scripts/verification-plan.sh
       - restore_cache:
           keys:
             - maven-v1-{{ checksum "pom.xml" }}
             - maven-v1-
       - run:
-          name: Run unit tests
-          command: mvn -B -ntp clean test
-      - run:
-          name: Package application
-          command: mvn -B -ntp package -DskipTests
+          name: Run automated verification
+          command: |
+            chmod +x scripts/run-automated-verification.sh
+            ./scripts/run-automated-verification.sh
       - save_cache:
           paths:
             - ~/.m2
           key: maven-v1-{{ checksum "pom.xml" }}
       - store_test_results:
           path: target/surefire-reports
+      - store_artifacts:
+          path: target/verification
       - store_artifacts:
           path: target/springboot-circleci-demo-0.0.1-SNAPSHOT.jar
 
@@ -41,12 +52,11 @@ jobs:
 workflows:
   ci_cd:
     jobs:
-      - build_and_test
+      - automated_verification
       - deploy_snapshot:
           requires:
-            - build_and_test
+            - automated_verification
           filters:
             branches:
               only:
                 - main
-
