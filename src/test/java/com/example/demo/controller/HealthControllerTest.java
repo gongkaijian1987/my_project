@@ -31,5 +31,12 @@ class HealthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Hello, CircleCI!")));
     }
+
+    @Test
+    void testEndpointShouldReturnMessage() throws Exception {
+        mockMvc.perform(get("/api/test").param("name", "CircleCI"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Hello, CircleCI!")));
+    }
 }
 
