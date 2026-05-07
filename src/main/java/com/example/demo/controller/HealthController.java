@@ -35,5 +35,11 @@ public class HealthController {
         payload.put("message", greetingService.greet(name));
         return ResponseEntity.ok(payload);
     }
+
+    @GetMapping("/test")
+    public ResponseEntity<Map<String, Object>> test(@RequestParam(value = "name", required = false) String name) {
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        return ResponseEntity.ok(payload);
+    }
 }
 
