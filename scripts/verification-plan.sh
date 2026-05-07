@@ -10,6 +10,7 @@ mkdir -p "${REPORT_DIR}"
 
 BASE_REF="${CIRCLE_BRANCH:-}"
 DEFAULT_BRANCH="${CIRCLE_DEFAULT_BRANCH:-main}"
+CURRENT_BRANCH="${CIRCLE_BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)}"
 
 if git rev-parse --verify "origin/${DEFAULT_BRANCH}" >/dev/null 2>&1; then
   COMPARE_REF="$(git merge-base HEAD "origin/${DEFAULT_BRANCH}")"
@@ -60,7 +61,7 @@ add_target() {
 }
 
 if [ -z "${CHANGED_FILES}" ]; then
-  add_reason "No file changes detected; default to lightweight verification."
+  add_reason "No file changes detected; do not skip tests by default."
 fi
 
 while IFS= read -r file; do
@@ -128,7 +129,14 @@ if [ "${NON_DOC_CHANGE}" = "false" ] && [ -n "${CHANGED_FILES}" ]; then
 fi
 
 VERIFICATION_MODE="targeted"
-if [ ${RISK_SCORE} -ge 40 ]; then
+if [ "${CURRENT_BRANCH}" = "${DEFAULT_BRANCH}" ]; then
+  VERIFICATION_MODE="full"
+  add_reason "Default branch builds always run full verification."
+  add_target "full"
+elif [ -z "${CHANGED_FILES}" ]; then
+  VERIFICATION_MODE="targeted"
+  add_reason "Empty diff detected; fall back to targeted tests instead of lightweight validation."
+elif [ ${RISK_SCORE} -ge 40 ]; then
   VERIFICATION_MODE="full"
   add_target "full"
 elif [ ${RISK_SCORE} -le 5 ]; then
