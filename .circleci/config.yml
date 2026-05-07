@@ -1,39 +1,42 @@
 version: 2.1
 
 jobs:
-  automated_verification:
+  parallel_test_verification:
     docker:
       - image: maven:3.8.8-eclipse-temurin-8
+    parallelism: 4
     working_directory: ~/project
     steps:
       - checkout
-      - run:
-          name: Install git
-          command: |
-            apt-get update
-            apt-get install -y git
-      - run:
-          name: Analyze changed files and build verification plan
-          command: |
-            chmod +x scripts/verification-plan.sh
-            ./scripts/verification-plan.sh
       - restore_cache:
           keys:
             - maven-v1-{{ checksum "pom.xml" }}
             - maven-v1-
       - run:
-          name: Run automated verification
+          name: Run split test suite in parallel
           command: |
-            chmod +x scripts/run-automated-verification.sh
-            ./scripts/run-automated-verification.sh
+            chmod +x scripts/run-circleci-parallel-tests.sh
+            ./scripts/run-circleci-parallel-tests.sh
       - save_cache:
           paths:
             - ~/.m2
           key: maven-v1-{{ checksum "pom.xml" }}
       - store_test_results:
           path: target/surefire-reports
-      - store_artifacts:
-          path: target/verification
+
+  package_application:
+    docker:
+      - image: maven:3.8.8-eclipse-temurin-8
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - maven-v1-{{ checksum "pom.xml" }}
+            - maven-v1-
+      - run:
+          name: Package Spring Boot application
+          command: mvn -B -ntp package -DskipTests
       - store_artifacts:
           path: target/springboot-circleci-demo-0.0.1-SNAPSHOT.jar
 
@@ -52,10 +55,13 @@ jobs:
 workflows:
   ci_cd:
     jobs:
-      - automated_verification
+      - parallel_test_verification
+      - package_application:
+          requires:
+            - parallel_test_verification
       - deploy_snapshot:
           requires:
-            - automated_verification
+            - package_application
           filters:
             branches:
               only:

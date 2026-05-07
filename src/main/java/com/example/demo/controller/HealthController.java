@@ -39,7 +39,7 @@ public class HealthController {
     @GetMapping("/test")
     public ResponseEntity<Map<String, Object>> test(@RequestParam(value = "name", required = false) String name) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("message", greetingService.greet(name));
         return ResponseEntity.ok(payload);
     }
 }
-

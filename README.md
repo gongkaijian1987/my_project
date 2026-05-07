@@ -60,6 +60,26 @@ mvn spring-boot:run
    - `full`：执行完整 `mvn clean test`
 5. 最终输出验证摘要和制品，作为 CircleCI artifact 保存。
 
+### 并行测试与分片演示
+
+这个项目现在额外提供了一套适合演示 `parallelism` 效果的测试设计：
+
+- 新增了 4 个慢测试类，每个类包含 2 个固定延迟测试。
+- 单机串行执行时，这些测试会带来明显等待时间。
+- CircleCI 中通过 `parallelism: 4` 和 `circleci tests run` 将测试类按历史耗时拆分到 4 个执行节点。
+
+对应实现如下：
+
+- `.circleci/config.yml` 中的 `parallel_test_verification` job
+- `scripts/run-circleci-parallel-tests.sh`
+- `src/test/java/com/example/demo/performance/*`
+
+这套设计适合在 CircleCI 页面中直观看到：
+
+- 串行测试需要更久
+- 并行分片后整体 wall time 明显下降
+- 多个节点分别执行不同测试类
+
 ### Chunk CLI 与 sidecar
 
 除了推送后的 CI 流程，这个项目也适合接入 `Chunk CLI` 做提交前验证。
@@ -149,16 +169,16 @@ bash scripts/chunk-pre-commit-gate.sh
 
 ### CI 阶段
 
-`automated_verification` 作业完成以下事情：
+`parallel_test_verification` 作业完成以下事情：
 
 1. 拉取代码。
-2. 安装 `git` 以便分析差异。
-3. 执行变更分析和风险分级。
-4. 恢复 Maven 缓存。
-5. 按风险级别执行自动化验证。
-6. 按需执行打包。
-7. 保存 `~/.m2` 缓存。
-8. 上传测试结果、验证报告和 Jar 制品。
+2. 恢复 Maven 缓存。
+3. 使用 `circleci tests run` 自动拆分测试集。
+4. 在 4 个并行执行器中分别运行分配到的测试类。
+5. 保存 `~/.m2` 缓存。
+6. 上传测试结果。
+
+`package_application` 作业在测试全部通过后执行打包，并上传 Jar 制品。
 
 ### CD 阶段
 
