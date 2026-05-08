@@ -1,3 +1,5 @@
 # Docs
 
-- [Chunk 自动化验证实施方案](./chunk-implementation-guide.md)
+- [Chunk configuration checklist](./chunk-checklist.md)
+- [Chunk implementation guide](./chunk-implementation-guide.md)
+- [Chunk Web prompts](./chunk-web-prompts.md)

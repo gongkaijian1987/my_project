@@ -6,7 +6,7 @@
 - CircleCI 并行测试与测试分片
 - Maven 依赖缓存
 - CircleCI `resource_class` 资源分级
-- Chunk 环境准备与修复规则接入
+- Chunk 环境准备、修复规则与 Web Chat 体验
 - 提交前校验脚本设计
 
 ## 技术栈
@@ -30,6 +30,7 @@
 ├── docs
 │   ├── chunk-checklist.md
 │   ├── chunk-implementation-guide.md
+│   ├── chunk-web-prompts.md
 │   └── README.md
 ├── scripts
 │   ├── chunk-pre-commit-gate.sh
@@ -59,6 +60,7 @@
 │           ├── service/GreetingServiceTest.java
 │           └── support/SlowTestSupport.java
 ├── agents.md
+├── claude.md
 ├── pom.xml
 └── README.md
 ```
@@ -215,7 +217,7 @@ maven-jdk8-v1-{{ checksum "pom.xml" }}
 - `deploy_snapshot` 当前只执行示例脚本，因此 `small` 足够
 - `cci-agent-setup` 需要为 Chunk 准备依赖环境，因此使用 `medium`
 
-这可以帮助观众理解：
+这可以帮助理解：
 
 - `parallelism` 是横向扩容
 - `resource_class` 是纵向调整单节点资源
@@ -257,9 +259,10 @@ maven-jdk8-v1-{{ checksum "pom.xml" }}
 
 ### 2. 修复规则
 
-当前仓库包含两层规则文件：
+当前仓库包含三层规则文件：
 
 - `agents.md`：仓库通用修复规则
+- `claude.md`：更适合 Chunk Web Chat 读取的项目背景和优化偏好
 - `.circleci/fix-flaky-test.md`：flaky test 专项规则
 
 这些文件用于告诉 Chunk：
@@ -268,8 +271,28 @@ maven-jdk8-v1-{{ checksum "pom.xml" }}
 - 不要通过删除断言让流水线变绿
 - 保持 JDK 8 兼容
 - 保持现有接口语义和 JSON 字段稳定
+- 当用户希望体验 AI 辅助时，优先分析缓存、并行、资源等级和反馈速度优化
 
-### 3. 补充文档
+### 3. 更适合体验 Chunk 的 Web 用法
+
+当前项目更容易在 CircleCI Web 界面中体验到 Chunk 的场景是：
+
+- 流水线配置优化
+- 测试反馈速度分析
+- flaky test 准备度检查
+- 缓存、并行和资源等级建议
+
+如果目标是体验 Chunk 的价值，建议优先让它做：
+
+- `Optimize build configs`
+- `Review pipeline design`
+- `Assess flaky test readiness`
+
+推荐提示词见：
+
+- [docs/chunk-web-prompts.md](./docs/chunk-web-prompts.md)
+
+### 4. 补充文档
 
 更多说明见：
 
@@ -303,7 +326,7 @@ bash scripts/chunk-validate-circleci.sh
 2. CircleCI `parallelism + circleci tests run`
 3. Maven 依赖缓存优化
 4. `resource_class` 按 job 分级配置
-5. Chunk 的环境准备和修复规则设计
+5. Chunk 的环境准备、修复规则和 Web Chat 分析能力
 
 ## 后续可扩展方向
 
