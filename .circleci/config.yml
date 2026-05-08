@@ -10,17 +10,13 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - maven-v1-{{ checksum "pom.xml" }}
-            - maven-v1-
+            - maven-jdk8-v1-{{ checksum "pom.xml" }}
+            - maven-jdk8-v1-
       - run:
           name: Run split test suite in parallel
           command: |
             chmod +x scripts/run-circleci-parallel-tests.sh
             ./scripts/run-circleci-parallel-tests.sh
-      - save_cache:
-          paths:
-            - ~/.m2
-          key: maven-v1-{{ checksum "pom.xml" }}
       - store_test_results:
           path: target/surefire-reports
 
@@ -32,11 +28,15 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - maven-v1-{{ checksum "pom.xml" }}
-            - maven-v1-
+            - maven-jdk8-v1-{{ checksum "pom.xml" }}
+            - maven-jdk8-v1-
       - run:
           name: Package Spring Boot application
           command: mvn -B -ntp package -DskipTests
+      - save_cache:
+          key: maven-jdk8-v1-{{ checksum "pom.xml" }}
+          paths:
+            - ~/.m2
       - store_artifacts:
           path: target/springboot-circleci-demo-0.0.1-SNAPSHOT.jar
 

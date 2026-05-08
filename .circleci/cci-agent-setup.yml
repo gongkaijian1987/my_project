@@ -14,8 +14,8 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - maven-v1-{{ checksum "pom.xml" }}
-            - maven-v1-
+            - maven-jdk8-v1-{{ checksum "pom.xml" }}
+            - maven-jdk8-v1-
       - run:
           name: Verify Java and Maven versions
           command: |
@@ -25,7 +25,6 @@ jobs:
           name: Prepare Maven dependencies
           command: mvn -B -ntp dependency:go-offline
       - save_cache:
-          key: maven-v1-{{ checksum "pom.xml" }}
+          key: maven-jdk8-v1-{{ checksum "pom.xml" }}
           paths:
             - ~/.m2
-
