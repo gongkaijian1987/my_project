@@ -1,23 +1,23 @@
-# Spring Boot CircleCI Demo
+# Spring Boot CircleCI 演示项目
 
-这是一个基于 `Spring Boot 2.7.18`、`Maven` 和 `JDK 1.8.0_462` 的示例项目，用来演示：
+这是一个基于 `Spring Boot 2.7.18`、`Maven` 和 `JDK 1.8.0_462` 的示例项目，用来演示以下能力：
 
 - Spring Boot Web 接口与测试
-- CircleCI 并行测试与测试分片
+- CircleCI 并行测试分片
 - Maven 依赖缓存
-- CircleCI `resource_class` 资源分级
-- Chunk 环境准备、修复规则与 Web Chat 体验
-- 提交前校验脚本设计
+- `resource_class` 资源分级
+- Chunk 环境接入与修复规则
+- Chunk Sidecars 本地前置验证思路
 
 ## 技术栈
 
 - JDK: `1.8.0_462`
 - Spring Boot: `2.7.18`
-- Maven: `3.6+`
+- Maven: `3.8.x`
 - Test: `JUnit 5`、`MockMvc`
 - CI/CD: `CircleCI 2.1`
 
-## 当前目录结构
+## 目录结构
 
 ```text
 .
@@ -28,44 +28,15 @@
 ├── .claude
 │   └── settings.json
 ├── docs
-│   ├── chunk-checklist.md
-│   ├── chunk-implementation-guide.md
-│   ├── chunk-web-prompts.md
-│   └── README.md
 ├── scripts
-│   ├── chunk-pre-commit-gate.sh
-│   ├── chunk-run-maven.sh
-│   ├── chunk-validate-circleci.sh
-│   ├── chunk-validate-package.sh
-│   ├── chunk-validate-tests.sh
-│   ├── deploy.sh
-│   ├── run-automated-verification.sh
-│   ├── run-circleci-parallel-tests.sh
-│   └── verification-plan.sh
 ├── src
-│   ├── main
-│   │   ├── java/com/example/demo
-│   │   │   ├── DemoApplication.java
-│   │   │   ├── controller/HealthController.java
-│   │   │   └── service/GreetingService.java
-│   │   └── resources/application.yml
-│   └── test
-│       └── java/com/example/demo
-│           ├── controller/HealthControllerTest.java
-│           ├── performance
-│           │   ├── ParallelDemoAlphaTest.java
-│           │   ├── ParallelDemoBetaTest.java
-│           │   ├── ParallelDemoDeltaTest.java
-│           │   └── ParallelDemoGammaTest.java
-│           ├── service/GreetingServiceTest.java
-│           └── support/SlowTestSupport.java
 ├── agents.md
 ├── claude.md
 ├── pom.xml
 └── README.md
 ```
 
-## 业务接口
+## 接口说明
 
 启动应用后可访问：
 
@@ -73,9 +44,9 @@
 - `GET /api/greeting?name=CircleCI`
 - `GET /api/test?name=CircleCI`
 
-其中 `/api/greeting` 和 `/api/test` 都会返回带有 `message` 字段的 JSON。
+其中 `/api/greeting` 和 `/api/test` 都会返回包含 `message` 字段的 JSON。
 
-## 本地开发
+## 本地使用
 
 运行测试：
 
@@ -95,213 +66,242 @@ mvn -B -ntp package -DskipTests
 mvn spring-boot:run
 ```
 
-## CircleCI 流水线说明
+## CircleCI 流水线
 
-主流程定义在 `.circleci/config.yml` 中，目前包含 3 个 job：
+当前主流程定义在 [.circleci/config.yml](/D:/code/circleci_test/my_project/.circleci/config.yml:1)，包含 3 个 job：
 
 1. `parallel_test_verification`
 2. `package_application`
 3. `deploy_snapshot`
 
-### 1. 并行测试与分片
+执行顺序如下：
 
-`parallel_test_verification` 主要演示：
+1. 先执行并行测试
+2. 测试通过后执行打包
+3. 仅 `main` 分支执行示例部署
+
+### 并行测试与分片
+
+`parallel_test_verification` 用于演示：
 
 - `parallelism: 4`
-- 使用 `circleci tests run` 做测试分片
-- 通过 `scripts/run-circleci-parallel-tests.sh` 在每个节点执行分配到的测试类
+- `circleci tests run`
+- `scripts/run-circleci-parallel-tests.sh`
 
-项目中额外加入了 4 组带固定延迟的慢测试：
+仓库中包含 4 组带固定延迟的测试：
 
 - `ParallelDemoAlphaTest`
 - `ParallelDemoBetaTest`
 - `ParallelDemoGammaTest`
 - `ParallelDemoDeltaTest`
 
-这样可以在 CircleCI 页面中比较直观地看到：
+这些测试的目的是让 CircleCI 页面上能更直观看到：
 
-- 串行执行较慢
-- 测试分片后整体 wall time 明显下降
+- 串行执行时总时长明显累加
+- 使用 4 路并行后，慢测试会被拆分到不同执行节点
+- 整体 `wall time` 会明显下降
 
-#### 演示目的
+演示时建议重点观察：
 
-这个项目专门通过“固定延迟测试 + CircleCI 并行分片”来演示：
+- `parallelism` 负责横向扩容执行节点
+- `circleci tests run --split-by=timings` 会按历史耗时尽量均衡分配测试
+- 测试数量越多、单测越慢，并行分片收益越明显
 
-- 为什么测试数量一多后，串行执行会明显拖慢反馈速度
-- 为什么 `parallelism` 可以通过横向扩执行器数量来缩短总耗时
-- 为什么 `circleci tests run` 比简单按文件平均拆分更适合真实项目
+## Maven 缓存策略
 
-在本项目中，4 组慢测试每组都有固定等待时间，因此：
-
-- 本地串行执行时，总耗时会明显累加
-- CircleCI 中使用 4 个并行执行器后，多个慢测试类会被拆散到不同节点
-- 最终 wall time 会明显低于串行测试
-
-#### 演示步骤
-
-如果你要在 CircleCI 页面里向别人演示这项能力，建议按下面顺序操作：
-
-1. 推送一次代码，触发 `ci_cd` workflow
-2. 打开 `parallel_test_verification` job
-3. 观察该 job 使用了 `parallelism: 4`
-4. 查看每个并行节点分配到的测试类
-5. 观察慢测试被分散到多个节点，而不是全部堆在同一个节点
-6. 对比总耗时与本地串行测试时间
-
-#### 观察点
-
-演示时建议重点说明这几个点：
-
-- `parallelism` 是“横向扩节点”，不是单机提速
-- `circleci tests run --split-by=timings` 会尽量按照历史耗时做均衡拆分
-- 慢测试越多、总测试时间越长，并行分片带来的收益越明显
-- 如果测试本身很少，或者每个测试都很快，并行收益就不会特别明显
-
-### 2. Maven 缓存策略
-
-当前使用的缓存键模式为：
+当前使用的缓存 key 为：
 
 ```yaml
 maven-jdk8-v1-{{ checksum "pom.xml" }}
 ```
 
-当前缓存设计如下：
+缓存设计如下：
 
 - `parallel_test_verification` 只恢复缓存
-- `package_application` 恢复缓存并统一写回 `~/.m2`
-- `.circleci/cci-agent-setup.yml` 也会恢复并保存同一套 Maven 缓存
+- `package_application` 恢复并统一写回 `~/.m2`
+- `.circleci/cci-agent-setup.yml` 也使用同一套 Maven 缓存策略
 
-这样做的目的是：
+这样做的目的：
 
-- 使用 `pom.xml` 的 checksum 保证缓存精确失效
-- 使用 `jdk8` 前缀标识当前运行时语义
-- 避免并行测试节点重复上传同一个 Maven 缓存
+- 利用 `pom.xml` 的 `checksum` 精确控制缓存失效
+- 用 `jdk8` 前缀标识当前运行时语义
+- 避免并行测试节点重复上传同一份 Maven 缓存
 
-### 3. resource_class 资源分级
+## resource_class 资源分级
 
-当前资源规格配置如下：
+当前配置如下：
 
 - `parallel_test_verification`: `medium`
 - `package_application`: `medium`
 - `deploy_snapshot`: `small`
 - `cci-agent-setup`: `medium`
 
-设计思路是：
+设计思路如下：
 
-- 测试 job 需要加载 Spring Boot 测试上下文并执行分片，使用 `medium`
-- 打包 job 需要编译和重打包，使用 `medium`
-- 部署 job 当前只是执行示例脚本，使用 `small`
-- Chunk 环境准备需要下载依赖和准备运行环境，使用 `medium`
+- 测试 job 需要运行 Spring Boot 测试上下文和测试分片，使用 `medium`
+- 打包 job 需要编译和 Spring Boot 重打包，使用 `medium`
+- 部署 job 当前只是示例脚本，使用 `small`
+- Chunk 环境准备需要拉取依赖和准备环境，使用 `medium`
 
-#### 为什么要分级配置
+可以把这项能力理解成：
 
-`resource_class` 用来控制单个 job 的计算资源大小。它解决的问题不是“能不能跑”，而是：
-
-- 资源是否够用
-- 是否存在明显浪费
-- 执行时间和 CircleCI 额度之间是否平衡
-
-如果所有 job 都统一使用同一种规格，通常会出现两类问题：
-
-- 测试或编译任务资源不足，导致变慢甚至不稳定
-- 简单脚本任务资源过剩，造成额度浪费
-
-因此，本项目特意做了分级配置，方便演示“按 job 类型分配资源”的思路。
-
-#### 这项能力怎么演示
-
-在当前项目里，可以这样解释 `resource_class`：
-
-- `parallel_test_verification` 需要执行 Spring Boot 测试和测试分片，所以使用 `medium`
-- `package_application` 需要进行 Maven 编译和 Spring Boot 打包，也使用 `medium`
-- `deploy_snapshot` 当前只执行示例脚本，因此 `small` 足够
-- `cci-agent-setup` 需要为 Chunk 准备依赖环境，因此使用 `medium`
-
-这可以帮助理解：
-
-- `parallelism` 是横向扩容
+- `parallelism` 是横向增加节点
 - `resource_class` 是纵向调整单节点资源
-- 两者结合后，才是更完整的 CircleCI 性能优化思路
 
-#### 实践建议
+两者结合后，才是更完整的 CircleCI 性能优化方案。
 
-对于真实项目，通常建议：
+## Docker Layer Caching
 
-- 从 `medium` 起步，而不是一上来就全用大规格
-- 对测试、构建、部署类 job 分别设置不同资源等级
-- 当测试时间已经通过分片明显下降后，再评估是否还需要继续加大 `resource_class`
-- 不要把所有性能问题都归因于机器规格，测试设计、依赖缓存和分片策略同样重要
+当前仓库还没有引入 `Dockerfile` 和镜像构建 job，因此 **Docker Layer Caching (DLC) 还未启用**。不过它是这个项目非常自然的下一步增强方向。
 
-### 4. 打包与部署
+DLC 的作用是：
 
-当前工作流顺序如下：
+- 在 `docker build` 时缓存未变化的镜像层
+- 只重建真正发生变更的层
+- 减少依赖安装、系统包下载、源码复制后的重复构建成本
 
-1. 先执行 `parallel_test_verification`
-2. 测试通过后执行 `package_application`
-3. 最后在 `main` 分支执行 `deploy_snapshot`
+如果后续把本项目扩展成 “Spring Boot + Docker + CircleCI” 演示仓库，推荐做法是：
 
-其中：
+1. 新增 `Dockerfile`
+2. 在 `.circleci/config.yml` 中增加镜像构建 job
+3. 在 `setup_remote_docker` 中启用：
 
-- 打包 job 会上传 Jar 制品
-- 部署 job 当前只是示例脚本，位于 `scripts/deploy.sh`
+```yaml
+- setup_remote_docker:
+    docker_layer_caching: true
+```
 
-## Chunk 相关配置
+适合引入 DLC 的场景：
 
-### 1. 环境准备
+- 每次提交都要构建 Docker 镜像
+- Dockerfile 前半部分比较稳定
+- 依赖安装层较重
 
-`.circleci/cci-agent-setup.yml` 用于给 Chunk 提供项目运行环境，主要负责：
+不适合盲目开启的原因：
 
-- checkout 代码
+- DLC 会增加 CircleCI credits 成本
+- 如果项目本身不构建 Docker 镜像，这项能力没有收益
+
+因此，对当前项目来说，DLC 更适合作为“下一阶段 Docker 优化能力”来演示，而不是当前默认开启项。
+
+## Chunk 接入
+
+### 环境准备
+
+[.circleci/cci-agent-setup.yml](/D:/code/circleci_test/my_project/.circleci/cci-agent-setup.yml:1) 用于给 Chunk 提供专用执行环境，当前负责：
+
+- `checkout`
 - 恢复 Maven 缓存
 - 校验 Java / Maven 版本
 - 执行 `mvn -B -ntp dependency:go-offline`
 - 保存 Maven 缓存
 
-### 2. 修复规则
+### 修复规则
 
-当前仓库包含三层规则文件：
+当前仓库包含 3 层规则文件：
 
-- `agents.md`：仓库通用修复规则
-- `claude.md`：更适合 Chunk Web Chat 读取的项目背景和优化偏好
-- `.circleci/fix-flaky-test.md`：flaky test 专项规则
+- [agents.md](/D:/code/circleci_test/my_project/agents.md:1)
+- [claude.md](/D:/code/circleci_test/my_project/claude.md:1)
+- [.circleci/fix-flaky-test.md](/D:/code/circleci_test/my_project/.circleci/fix-flaky-test.md:1)
 
 这些文件用于告诉 Chunk：
 
-- 优先修应用代码，而不是简单弱化测试
-- 不要通过删除断言让流水线变绿
+- 优先修应用代码，不要简单弱化测试
 - 保持 JDK 8 兼容
 - 保持现有接口语义和 JSON 字段稳定
-- 当用户希望体验 AI 辅助时，优先分析缓存、并行、资源等级和反馈速度优化
+- 优先分析缓存、并行、资源分级和反馈速度优化
 
-### 3. 更适合体验 Chunk 的 Web 用法
+### Web 体验建议
 
-当前项目更容易在 CircleCI Web 界面中体验到 Chunk 的场景是：
-
-- 流水线配置优化
-- 测试反馈速度分析
-- flaky test 准备度检查
-- 缓存、并行和资源等级建议
-
-如果目标是体验 Chunk 的价值，建议优先让它做：
+当前项目更适合在 CircleCI Web 中体验的 Chunk 场景：
 
 - `Optimize build configs`
 - `Review pipeline design`
 - `Assess flaky test readiness`
 
-推荐提示词见：
+更详细的 Web prompt 示例见：
 
-- [docs/chunk-web-prompts.md](./docs/chunk-web-prompts.md)
+- [docs/chunk-web-prompts.md](/D:/code/circleci_test/my_project/docs/chunk-web-prompts.md:1)
 
-### 4. 补充文档
+## Chunk Sidecars
 
-更多说明见：
+`Chunk Sidecars` 可以理解成一层“提交前、尽量接近 CI 环境的快速验证层”。
 
-- [docs/chunk-checklist.md](./docs/chunk-checklist.md)
-- [docs/chunk-implementation-guide.md](./docs/chunk-implementation-guide.md)
+它的目标不是替代主流水线，而是提前拦截这些本不该进入外层 CI 的问题：
 
-## 提交前校验
+- 编译失败
+- 单元测试失败
+- CircleCI 配置错误
+- 本地环境和 CI 环境不一致导致的问题
 
-仓库已经准备了一组本地校验脚本：
+### 结合当前项目的使用方式
+
+对 `my_project` 来说，最适合放进 sidecar 或 microbuild 的动作是：
+
+```bash
+bash scripts/chunk-validate-tests.sh
+bash scripts/chunk-validate-package.sh
+bash scripts/chunk-validate-circleci.sh
+```
+
+分别对应：
+
+- 测试是否通过
+- 应用是否还能正常打包
+- CircleCI 配置是否合法
+
+### 本地体验顺序
+
+更适合体验 `Chunk Sidecars` 的环境：
+
+- Linux
+- macOS
+- WSL
+
+推荐顺序：
+
+1. 安装 `Chunk CLI`
+2. 执行 `chunk init`
+3. 先手工验证仓库脚本
+4. 再把这些脚本映射到 `chunk validate` 或 sidecar 流程
+
+推荐先手工运行：
+
+```bash
+bash scripts/chunk-validate-tests.sh
+bash scripts/chunk-validate-package.sh
+bash scripts/chunk-validate-circleci.sh
+```
+
+### 推荐的 `.chunk/config.json` 最小思路
+
+如果后续执行 `chunk init`，推荐先保持最小验证闭环：
+
+```json
+{
+  "version": 1,
+  "validations": [
+    {
+      "name": "tests",
+      "description": "Run Spring Boot tests",
+      "command": "bash scripts/chunk-validate-tests.sh"
+    }
+  ],
+  "default_validations": [
+    "tests"
+  ]
+}
+```
+
+这样做的好处：
+
+- 默认只跑最核心的测试
+- 更适合提交前和 sidecar 的快速反馈
+- 后续可以再逐步加入 `package` 和 `circleci-config`
+
+## 提交前校验脚本
+
+仓库已经准备好以下脚本：
 
 - `scripts/chunk-validate-tests.sh`
 - `scripts/chunk-validate-package.sh`
@@ -316,162 +316,11 @@ bash scripts/chunk-validate-package.sh
 bash scripts/chunk-validate-circleci.sh
 ```
 
-如果后续在 Linux、macOS 或 WSL 中安装了 `Chunk CLI`，这些脚本也可以接到 `chunk validate` 后面使用。
+## 参考文档
 
-### 推荐的 `.chunk/config.json` 思路
-
-如果后续在本地执行 `chunk init`，建议重点检查生成的 `.chunk/config.json` 是否和当前项目脚本契合。
-
-对于 `my_project`，最适合作为 sidecar 或提交前快速验证的“最小版”思路是：
-
-```json
-{
-  "version": 1,
-  "validations": [
-    {
-      "name": "tests",
-      "description": "Run Spring Boot tests",
-      "command": "bash scripts/chunk-validate-tests.sh"
-    }
-  ],
-  "default_validations": [
-    "tests"
-  ]
-}
-```
-
-这样设计的原因是：
-
-- 默认只跑最核心的测试验证
-- 更适合提交前和 sidecar 的快速反馈场景
-- 可以避免每次都把打包和 CircleCI 配置校验一起拉进来，影响反馈速度
-
-如果后续你希望把本地验证扩展成更完整的版本，再逐步加入：
-
-- `bash scripts/chunk-validate-package.sh`
-- `bash scripts/chunk-validate-circleci.sh`
-
-也就是说，当前项目最推荐的演进路径是：
-
-1. 最小版：只跑 `tests`
-2. 增强版：加入 `package` 和 `circleci-config`
-
-## Chunk Sidecars
-
-`Chunk sidecars` 可以理解为一种“提交前、接近 CI 环境的快速验证层”。
-
-它的目标不是替代主流水线，而是把本来就不该进入外层 CI 的基础问题，尽量在更早阶段拦下来，例如：
-
-- 编译失败
-- 单元测试失败
-- 配置文件错误
-- 本地环境与 CI 环境不一致导致的问题
-
-对于 `my_project` 这样的 Spring Boot Maven 项目，可以把它理解成：
-
-- 在代码 push 之前
-- 让 agent 或开发者先在更接近 CircleCI 的 sidecar 环境里运行一轮轻量验证
-- 如果失败，就先在内循环修掉，而不是把问题直接推到外层 CI
-
-### 当前项目里最适合它做什么
-
-这个项目已经具备比较适合接 sidecar 的基础条件：
-
-- 有稳定的 Maven 测试入口
-- 有打包入口
-- 有 CircleCI 配置校验脚本
-- 有 Chunk 环境文件
-- 有测试结果采集和 Maven 缓存策略
-
-所以对当前项目来说，sidecar 最适合承担的是“轻量但关键”的前置验证，而不是完整部署流程。
-
-最适合接入 sidecar / microbuild 的动作是：
-
-```bash
-bash scripts/chunk-validate-tests.sh
-bash scripts/chunk-validate-package.sh
-bash scripts/chunk-validate-circleci.sh
-```
-
-这 3 组校验分别对应：
-
-- 测试是否通过
-- 应用是否还能正常打包
-- CircleCI 配置是否仍然合法
-
-### 本地体验方式
-
-如果后续要在本地体验 `Chunk sidecars`，更适合的环境是：
-
-- Linux
-- macOS
-- WSL
-
-推荐顺序如下：
-
-1. 安装 `Chunk CLI`
-2. 执行 `chunk init`
-3. 先手工验证当前仓库脚本可运行
-4. 再把这些脚本映射到 sidecar / microbuild 的验证流程
-
-对当前项目，推荐先手工跑：
-
-```bash
-bash scripts/chunk-validate-tests.sh
-bash scripts/chunk-validate-package.sh
-bash scripts/chunk-validate-circleci.sh
-```
-
-确认这些脚本在本地没问题后，再通过 `chunk validate` 或 sidecar 去承接它们。
-
-### 推荐的 `.chunk/config.json` 最小思路
-
-如果后续在本地执行 `chunk init`，建议把默认验证保持在“轻量、快速”的级别。
-
-对于 `my_project`，推荐的最小思路是只跑测试：
-
-```json
-{
-  "version": 1,
-  "validations": [
-    {
-      "name": "tests",
-      "description": "Run Spring Boot tests",
-      "command": "bash scripts/chunk-validate-tests.sh"
-    }
-  ],
-  "default_validations": [
-    "tests"
-  ]
-}
-```
-
-这样设计的原因是：
-
-- 默认只跑最核心的测试验证
-- 更适合提交前和 sidecar 的快速反馈场景
-- 可以避免每次都把打包和 CircleCI 配置校验一起拉进来，影响反馈速度
-
-如果后续需要增强，再逐步加入：
-
-- `bash scripts/chunk-validate-package.sh`
-- `bash scripts/chunk-validate-circleci.sh`
-
-### 这项能力怎么对外演示
-
-如果你要向团队解释当前项目里的 `Chunk sidecars`，推荐这样说：
-
-`Chunk sidecars` 会在代码进入外层 CircleCI 流水线之前，先用一个尽量接近 CI 的轻量验证环境执行 microbuild。对当前项目来说，最适合前置验证的是测试、打包和 CircleCI 配置校验，这样可以减少无效 CI 构建和来回修复成本。
-
-## 当前项目最适合演示的能力
-
-这个项目当前最适合演示：
-
-1. Spring Boot + JUnit 5 + MockMvc 的测试结构
-2. CircleCI `parallelism + circleci tests run`
-3. Maven 依赖缓存优化
-4. `resource_class` 按 job 分级配置
-5. Chunk 的环境准备、修复规则和 Web Chat 分析能力
+- [docs/chunk-checklist.md](/D:/code/circleci_test/my_project/docs/chunk-checklist.md:1)
+- [docs/chunk-implementation-guide.md](/D:/code/circleci_test/my_project/docs/chunk-implementation-guide.md:1)
+- [docs/chunk-web-prompts.md](/D:/code/circleci_test/my_project/docs/chunk-web-prompts.md:1)
 
 ## 后续可扩展方向
 
@@ -479,4 +328,4 @@ bash scripts/chunk-validate-circleci.sh
 - 增加 `Checkstyle` 或 `SpotBugs`
 - 增加 nightly 全量测试 workflow
 - 增加 Docker 镜像构建与发布
-- 增加多环境部署流程
+- 在引入 Docker 构建后启用 `Docker Layer Caching`
