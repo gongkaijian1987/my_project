@@ -318,6 +318,113 @@ bash scripts/chunk-validate-circleci.sh
 
 如果后续在 Linux、macOS 或 WSL 中安装了 `Chunk CLI`，这些脚本也可以接到 `chunk validate` 后面使用。
 
+## Chunk Sidecars
+
+`Chunk sidecars` 可以理解为一种“提交前、接近 CI 环境的快速验证层”。
+
+它的目标不是替代主流水线，而是把本来就不该进入外层 CI 的基础问题，尽量在更早阶段拦下来，例如：
+
+- 编译失败
+- 单元测试失败
+- 配置文件错误
+- 本地环境与 CI 环境不一致导致的问题
+
+对于 `my_project` 这样的 Spring Boot Maven 项目，可以把它理解成：
+
+- 在代码 push 之前
+- 让 agent 或开发者先在一个更接近 CircleCI 的 sidecar 环境里运行小范围验证
+- 如果失败，就先在内循环修掉，而不是把问题直接推到外层 CI
+
+### 这项能力解决什么问题
+
+它主要解决的是：
+
+- “本地看起来没问题，但 CI 挂了”
+- “低级错误推上去才发现”
+- “AI 生成代码很快，但每次都要等主流水线兜底”
+
+因此，这项能力更像是：
+
+- 对外层 CI 的前置过滤
+- 对 AI 编码内循环的加速器
+- 对环境一致性的增强
+
+### 结合当前项目怎么理解
+
+这个项目当前已经具备比较适合接 sidecar 的基础条件：
+
+- 有稳定的 Maven 测试入口
+- 有打包入口
+- 有 CircleCI 配置校验脚本
+- 有 Chunk 环境文件
+- 有测试结果与缓存策略
+
+如果未来接入 `Chunk sidecars`，当前项目最适合放进 sidecar / microbuild 的验证动作是：
+
+1. `bash scripts/chunk-validate-tests.sh`
+2. `bash scripts/chunk-validate-package.sh`
+3. `bash scripts/chunk-validate-circleci.sh`
+
+也就是说，sidecar 最适合承接当前这些“轻量但关键”的提交前校验，而不是直接替代完整发布流程。
+
+### 本地使用方式
+
+如果后续要在本地体验 `Chunk sidecars`，更适合的环境是：
+
+- Linux
+- macOS
+- WSL
+
+当前推荐的本地接入思路是：
+
+1. 安装 `Chunk CLI`
+2. 完成 `chunk init`
+3. 将当前仓库的轻量校验动作接入 sidecar 或 microbuild
+4. 在代码提交前先运行 sidecar 验证，再决定是否 push
+
+对当前项目来说，最适合接入 sidecar 的本地验证内容是：
+
+```bash
+bash scripts/chunk-validate-tests.sh
+bash scripts/chunk-validate-package.sh
+bash scripts/chunk-validate-circleci.sh
+```
+
+你可以把它理解成这样：
+
+- 本地先准备改动
+- 由 sidecar 在更接近 CI 的环境中执行这几组验证
+- 如果 sidecar 失败，就先在本地继续修复
+- 通过后再进入正式的 CircleCI 外层流水线
+
+### 推荐的本地体验顺序
+
+如果是第一次在这个项目里体验 sidecar，建议顺序如下：
+
+1. 先在本地直接运行：
+
+```bash
+bash scripts/chunk-validate-tests.sh
+bash scripts/chunk-validate-package.sh
+bash scripts/chunk-validate-circleci.sh
+```
+
+2. 确认这些脚本本地可用后，再把它们映射到 `Chunk sidecars` 的 microbuild 验证步骤
+3. 优先把 sidecar 用在测试、打包和 CircleCI 配置校验上
+4. 不要一开始就让 sidecar 承担完整部署或复杂集成测试
+
+这样做的好处是：
+
+- 更容易验证 sidecar 是否真正带来了环境一致性收益
+- 更容易把“本地校验”升级成“接近 CI 的本地前置验证”
+- 更适合当前这个以演示并行测试、缓存和 Chunk 接入为主的示例项目
+
+### 适合演示时怎么说
+
+如果你要向团队解释这项能力，可以用下面这句话：
+
+`Chunk sidecars` 通过一个尽量接近 CI 环境的轻量远程验证层，在代码提交前先执行 microbuild，提前拦截基础错误，从而减少无效 CI 构建和反馈往返。
+
 ## 当前项目最适合演示的能力
 
 这个项目当前最适合演示：
