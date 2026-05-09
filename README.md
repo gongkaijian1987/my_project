@@ -318,6 +318,44 @@ bash scripts/chunk-validate-circleci.sh
 
 如果后续在 Linux、macOS 或 WSL 中安装了 `Chunk CLI`，这些脚本也可以接到 `chunk validate` 后面使用。
 
+### 推荐的 `.chunk/config.json` 思路
+
+如果后续在本地执行 `chunk init`，建议重点检查生成的 `.chunk/config.json` 是否和当前项目脚本契合。
+
+对于 `my_project`，最适合作为 sidecar 或提交前快速验证的“最小版”思路是：
+
+```json
+{
+  "version": 1,
+  "validations": [
+    {
+      "name": "tests",
+      "description": "Run Spring Boot tests",
+      "command": "bash scripts/chunk-validate-tests.sh"
+    }
+  ],
+  "default_validations": [
+    "tests"
+  ]
+}
+```
+
+这样设计的原因是：
+
+- 默认只跑最核心的测试验证
+- 更适合提交前和 sidecar 的快速反馈场景
+- 可以避免每次都把打包和 CircleCI 配置校验一起拉进来，影响反馈速度
+
+如果后续你希望把本地验证扩展成更完整的版本，再逐步加入：
+
+- `bash scripts/chunk-validate-package.sh`
+- `bash scripts/chunk-validate-circleci.sh`
+
+也就是说，当前项目最推荐的演进路径是：
+
+1. 最小版：只跑 `tests`
+2. 增强版：加入 `package` 和 `circleci-config`
+
 ## Chunk Sidecars
 
 `Chunk sidecars` 可以理解为一种“提交前、接近 CI 环境的快速验证层”。
@@ -332,42 +370,36 @@ bash scripts/chunk-validate-circleci.sh
 对于 `my_project` 这样的 Spring Boot Maven 项目，可以把它理解成：
 
 - 在代码 push 之前
-- 让 agent 或开发者先在一个更接近 CircleCI 的 sidecar 环境里运行小范围验证
+- 让 agent 或开发者先在更接近 CircleCI 的 sidecar 环境里运行一轮轻量验证
 - 如果失败，就先在内循环修掉，而不是把问题直接推到外层 CI
 
-### 这项能力解决什么问题
+### 当前项目里最适合它做什么
 
-它主要解决的是：
-
-- “本地看起来没问题，但 CI 挂了”
-- “低级错误推上去才发现”
-- “AI 生成代码很快，但每次都要等主流水线兜底”
-
-因此，这项能力更像是：
-
-- 对外层 CI 的前置过滤
-- 对 AI 编码内循环的加速器
-- 对环境一致性的增强
-
-### 结合当前项目怎么理解
-
-这个项目当前已经具备比较适合接 sidecar 的基础条件：
+这个项目已经具备比较适合接 sidecar 的基础条件：
 
 - 有稳定的 Maven 测试入口
 - 有打包入口
 - 有 CircleCI 配置校验脚本
 - 有 Chunk 环境文件
-- 有测试结果与缓存策略
+- 有测试结果采集和 Maven 缓存策略
 
-如果未来接入 `Chunk sidecars`，当前项目最适合放进 sidecar / microbuild 的验证动作是：
+所以对当前项目来说，sidecar 最适合承担的是“轻量但关键”的前置验证，而不是完整部署流程。
 
-1. `bash scripts/chunk-validate-tests.sh`
-2. `bash scripts/chunk-validate-package.sh`
-3. `bash scripts/chunk-validate-circleci.sh`
+最适合接入 sidecar / microbuild 的动作是：
 
-也就是说，sidecar 最适合承接当前这些“轻量但关键”的提交前校验，而不是直接替代完整发布流程。
+```bash
+bash scripts/chunk-validate-tests.sh
+bash scripts/chunk-validate-package.sh
+bash scripts/chunk-validate-circleci.sh
+```
 
-### 本地使用方式
+这 3 组校验分别对应：
+
+- 测试是否通过
+- 应用是否还能正常打包
+- CircleCI 配置是否仍然合法
+
+### 本地体验方式
 
 如果后续要在本地体验 `Chunk sidecars`，更适合的环境是：
 
@@ -375,33 +407,14 @@ bash scripts/chunk-validate-circleci.sh
 - macOS
 - WSL
 
-当前推荐的本地接入思路是：
+推荐顺序如下：
 
 1. 安装 `Chunk CLI`
-2. 完成 `chunk init`
-3. 将当前仓库的轻量校验动作接入 sidecar 或 microbuild
-4. 在代码提交前先运行 sidecar 验证，再决定是否 push
+2. 执行 `chunk init`
+3. 先手工验证当前仓库脚本可运行
+4. 再把这些脚本映射到 sidecar / microbuild 的验证流程
 
-对当前项目来说，最适合接入 sidecar 的本地验证内容是：
-
-```bash
-bash scripts/chunk-validate-tests.sh
-bash scripts/chunk-validate-package.sh
-bash scripts/chunk-validate-circleci.sh
-```
-
-你可以把它理解成这样：
-
-- 本地先准备改动
-- 由 sidecar 在更接近 CI 的环境中执行这几组验证
-- 如果 sidecar 失败，就先在本地继续修复
-- 通过后再进入正式的 CircleCI 外层流水线
-
-### 推荐的本地体验顺序
-
-如果是第一次在这个项目里体验 sidecar，建议顺序如下：
-
-1. 先在本地直接运行：
+对当前项目，推荐先手工跑：
 
 ```bash
 bash scripts/chunk-validate-tests.sh
@@ -409,21 +422,46 @@ bash scripts/chunk-validate-package.sh
 bash scripts/chunk-validate-circleci.sh
 ```
 
-2. 确认这些脚本本地可用后，再把它们映射到 `Chunk sidecars` 的 microbuild 验证步骤
-3. 优先把 sidecar 用在测试、打包和 CircleCI 配置校验上
-4. 不要一开始就让 sidecar 承担完整部署或复杂集成测试
+确认这些脚本在本地没问题后，再通过 `chunk validate` 或 sidecar 去承接它们。
 
-这样做的好处是：
+### 推荐的 `.chunk/config.json` 最小思路
 
-- 更容易验证 sidecar 是否真正带来了环境一致性收益
-- 更容易把“本地校验”升级成“接近 CI 的本地前置验证”
-- 更适合当前这个以演示并行测试、缓存和 Chunk 接入为主的示例项目
+如果后续在本地执行 `chunk init`，建议把默认验证保持在“轻量、快速”的级别。
 
-### 适合演示时怎么说
+对于 `my_project`，推荐的最小思路是只跑测试：
 
-如果你要向团队解释这项能力，可以用下面这句话：
+```json
+{
+  "version": 1,
+  "validations": [
+    {
+      "name": "tests",
+      "description": "Run Spring Boot tests",
+      "command": "bash scripts/chunk-validate-tests.sh"
+    }
+  ],
+  "default_validations": [
+    "tests"
+  ]
+}
+```
 
-`Chunk sidecars` 通过一个尽量接近 CI 环境的轻量远程验证层，在代码提交前先执行 microbuild，提前拦截基础错误，从而减少无效 CI 构建和反馈往返。
+这样设计的原因是：
+
+- 默认只跑最核心的测试验证
+- 更适合提交前和 sidecar 的快速反馈场景
+- 可以避免每次都把打包和 CircleCI 配置校验一起拉进来，影响反馈速度
+
+如果后续需要增强，再逐步加入：
+
+- `bash scripts/chunk-validate-package.sh`
+- `bash scripts/chunk-validate-circleci.sh`
+
+### 这项能力怎么对外演示
+
+如果你要向团队解释当前项目里的 `Chunk sidecars`，推荐这样说：
+
+`Chunk sidecars` 会在代码进入外层 CircleCI 流水线之前，先用一个尽量接近 CI 的轻量验证环境执行 microbuild。对当前项目来说，最适合前置验证的是测试、打包和 CircleCI 配置校验，这样可以减少无效 CI 构建和来回修复成本。
 
 ## 当前项目最适合演示的能力
 
